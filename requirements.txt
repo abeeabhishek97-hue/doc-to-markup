@@ -15,7 +15,6 @@ torchvision==0.18.0
 # Markdown processing
 markdown-it-py==3.0.0
 
-
 # Backend
 fastapi==0.111.0
 uvicorn==0.29.0
