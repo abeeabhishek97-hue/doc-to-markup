@@ -69,3 +69,40 @@ def run_layout_detection(image, words, bboxes, processor, model):
         })
 
     return results
+def refine_classification(regions, ocr_boxes):
+    for region in regions:
+        text   = region.get("text", "")
+        bbox   = region["bbox"]
+        height = bbox[3] - bbox[1]
+
+        # Rule 1: Short tall lines are likely headings
+        if region["class"] == "paragraph":
+            if height > 40 and len(text.split()) < 10:
+                region["class"] = "heading"
+
+        # Rule 2: Monospace font regions are code
+        if region["class"] == "paragraph":
+            if is_monospace(region):
+                region["class"] = "code"
+
+        # Rule 3: Single-column tables misread as lists
+        if region["class"] == "list":
+            if has_grid_structure(ocr_boxes, bbox):
+                region["class"] = "table"
+
+    return regions
+
+
+def is_monospace(region):
+    widths = [b[2] - b[0] for b in region.get("char_boxes", [])]
+    if not widths:
+        return False
+    return (max(widths) - min(widths)) < 3
+
+
+def has_grid_structure(ocr_boxes, bbox):
+    contained = [b for b in ocr_boxes if is_inside(b, bbox)]
+    x_positions = sorted(
+        set(round(b[0] / 10) * 10 for b in contained)
+    )
+    return len(x_positions) >= 2
