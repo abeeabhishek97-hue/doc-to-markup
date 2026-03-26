@@ -106,3 +106,7 @@ def has_grid_structure(ocr_boxes, bbox):
         set(round(b[0] / 10) * 10 for b in contained)
     )
     return len(x_positions) >= 2
+def is_inside(box, bbox):
+    """Check if a box lies within a bounding region."""
+    return (box[0] >= bbox[0] and box[1] >= bbox[1] and
+            box[2] <= bbox[2] and box[3] <= bbox[3])
