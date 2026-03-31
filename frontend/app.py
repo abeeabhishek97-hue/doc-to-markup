@@ -55,7 +55,12 @@ if uploaded_file:
                     files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
                     response = requests.post(API_URL, files=files, timeout=120)
                     response.raise_for_status()
-                    markdown_text = response.json()["markdown"]
+
+                    # ── Save response data ─────────────────────────────
+                    data          = response.json()
+                    markdown_text = data["markdown"]
+                    st.session_state["regions"]    = data.get("regions", [])
+                    st.session_state["confidence"] = data.get("confidence", 0.0)
 
                 except requests.exceptions.ConnectionError:
                     markdown_text = """# Sample Heading
@@ -87,6 +92,26 @@ This is **dummy output** — backend not reachable.
 
         if "markdown" in st.session_state:
             md = st.session_state["markdown"]
+
+            # ── Confidence highlighting ────────────────────────────────
+            if "confidence" in st.session_state:
+                avg_conf = st.session_state.get("confidence", 0.0)
+                regions  = st.session_state.get("regions", [])
+
+                # Show confidence metric
+                col2.metric("Avg Confidence", f"{avg_conf:.0%}")
+
+                # Warn about low confidence regions
+                low_conf = [
+                    r for r in regions
+                    if float(r.get("confidence", 1.0)) < 0.6
+                ]
+                if low_conf:
+                    st.warning(
+                        f"⚠️ {len(low_conf)} regions have low confidence "
+                        f"(< 60%) — review these sections carefully."
+                    )
+
             st.markdown(md)
             st.divider()
             with st.expander("🔍 View raw Markdown"):

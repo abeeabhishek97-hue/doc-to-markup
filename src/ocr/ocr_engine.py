@@ -20,7 +20,7 @@ def extract_text_boxes(image) -> list[dict]:
     data = pytesseract.image_to_data(
         image,
         output_type=pytesseract.Output.DICT,
-        config='--psm 3'
+        config='--psm 4'    # ← changed from 3 to 4 (single column mode)
     )
 
     output = []
@@ -37,4 +37,3 @@ def extract_text_boxes(image) -> list[dict]:
                 "confidence": int(data["conf"][i]) / 100.0
             })
     return output
-    
