@@ -1,25 +1,40 @@
-from paddleocr import PaddleOCR
+# src/ocr/ocr_engine.py
 
-def get_ocr_engine(lang: str = "en") -> PaddleOCR:
-    return PaddleOCR(use_angle_cls=True, lang=lang, use_gpu=False)
-import numpy as np
-
-def extract_text_with_boxes(ocr_engine, image_array: np.ndarray) -> list[dict]:
-    results = ocr_engine.ocr(image_array, cls=True)
-    output = []
-    for line in results[0]:
-        bbox, (text, confidence) = line
-        output.append({
-            "text": text,
-            "bbox": bbox,       # [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-            "confidence": confidence
-        })
-    return output
 import pytesseract
+import numpy as np
 from PIL import Image
 
-def extract_text_tesseract(image_array: np.ndarray) -> list[dict]:
-    pil_img = Image.fromarray(image_array)
-    data = pytesseract.image_to_data(pil_img, output_type=pytesseract.Output.DICT)
-    # parse and return in same format as PaddleOCR output
-    ...
+# Point to Tesseract installation
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+
+def extract_text_boxes(image) -> list[dict]:
+    """
+    OCR using Tesseract.
+    Accepts PIL Image or numpy array.
+    Returns list of dicts with text, bbox, and confidence.
+    """
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+
+    data = pytesseract.image_to_data(
+        image,
+        output_type=pytesseract.Output.DICT,
+        config='--psm 3'
+    )
+
+    output = []
+    for i, text in enumerate(data["text"]):
+        if text.strip() and int(data["conf"][i]) > 30:
+            output.append({
+                "text": text.strip(),
+                "bbox": [
+                    data["left"][i],
+                    data["top"][i],
+                    data["left"][i] + data["width"][i],
+                    data["top"][i] + data["height"][i]
+                ],
+                "confidence": int(data["conf"][i]) / 100.0
+            })
+    return output
+    

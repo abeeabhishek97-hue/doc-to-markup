@@ -1,14 +1,29 @@
 # src/api/routes.py
-import time
+
+import os
+import tempfile
+import asyncio
+
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from src.api.schemas import ConvertResponse, RegionResult
 
+from src.ingestion.document_loader import load_document
+from src.ocr.ocr_engine import extract_text_boxes
+from src.layout.layout_detector import run_layout_detection, load_model
+from src.generation.markdown_generator import generate_markdown
+from src.generation.postprocessor import postprocess
+from src.generation.validator import validate_markdown
+
 router = APIRouter()
+
+# Load layout model once at startup — not on every request
+_processor, _model = load_model()
+
 
 @router.post("/convert", response_model=ConvertResponse)
 async def convert_document(file: UploadFile = File(...)):
 
-    # Validate file type
+    # ── Validate file type ────────────────────────────────────────────
     allowed = ["application/pdf", "image/jpeg", "image/png"]
     if file.content_type not in allowed:
         raise HTTPException(
@@ -16,51 +31,88 @@ async def convert_document(file: UploadFile = File(...)):
             detail=f"Unsupported file type: {file.content_type}. Upload a PDF or image."
         )
 
-    # Read the file
+    # ── Read and check file ───────────────────────────────────────────
     contents = await file.read()
     if len(contents) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    # ── DUMMY OUTPUT (will be replaced on Day 12) ────────────────────────
-    dummy_markdown = f"""# Sample Document
+    # ── Save to temp file ─────────────────────────────────────────────
+    suffix = os.path.splitext(file.filename)[-1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
 
-This is a dummy Markdown response for **{file.filename}**.
+    try:
+        # ── Step 1: Ingestion ─────────────────────────────────────────
+        pages = await asyncio.to_thread(load_document, tmp_path)
 
-## Introduction
+        all_regions = []
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-This output will be replaced with real content on Day 12.
+        # ── Step 2: OCR + Layout per page ─────────────────────────────
+        for page_image in pages:
 
-## Key Points
+            # OCR — returns list of {text, bbox, confidence}
+            ocr_results = await asyncio.to_thread(
+                extract_text_boxes, page_image
+            )
 
-- Point one about the document
-- Point two about the document
-- Point three about the document
+            if not ocr_results:
+                continue
 
-## Results
+            # Extract words and bboxes for layout model
+            words  = [r["text"] for r in ocr_results]
+            bboxes = [r["bbox"] for r in ocr_results]
 
-| Column A | Column B | Column C |
-|----------|----------|----------|
-| Value 1  | Value 2  | Value 3  |
-| Value 4  | Value 5  | Value 6  |
+            # Layout detection
+            regions = await asyncio.to_thread(
+                run_layout_detection,
+                page_image,    # PIL image
+                words,
+                bboxes,
+                _processor,
+                _model
+            )
 
-## Code Example
-```python
-def hello():
-    print("Hello from the converter!")
-```
-"""
+            # Attach confidence from OCR to each region
+            for i, region in enumerate(regions):
+                region["confidence"] = float(
+                    ocr_results[i]["confidence"]
+                ) if i < len(ocr_results) else 0.0
 
-    dummy_regions = [
-        RegionResult(label="heading",   text="Sample Document",  confidence=0.97),
-        RegionResult(label="paragraph", text="Lorem ipsum...",   confidence=0.89),
-        RegionResult(label="list",      text="Point one...",     confidence=0.91),
-        RegionResult(label="table",     text="Column A...",      confidence=0.85),
-        RegionResult(label="code",      text="def hello()...",   confidence=0.93),
-    ]
+            all_regions.extend(regions)
 
-    return ConvertResponse(
-        markdown=dummy_markdown,
-        confidence=0.91,
-        regions=dummy_regions
-    )
+        # ── Step 3: Generate Markdown ─────────────────────────────────
+        raw_markdown = generate_markdown(all_regions)
+
+        # ── Step 4: Post-process ──────────────────────────────────────
+        clean_markdown = postprocess(raw_markdown)
+
+        # ── Step 5: Validate ──────────────────────────────────────────
+        is_valid, message = validate_markdown(clean_markdown)
+
+        # ── Step 6: Build region results ──────────────────────────────
+        region_results = [
+            RegionResult(
+                label=r.get("label", "unknown"),
+                text=r.get("text", "")[:200],
+                confidence=float(r.get("confidence", 0.0)),
+            )
+            for r in all_regions
+        ]
+
+        avg_confidence = round(
+            sum(r.confidence for r in region_results) / len(region_results), 2
+        ) if region_results else 0.0
+
+        return ConvertResponse(
+            markdown=clean_markdown,
+            confidence=avg_confidence,
+            regions=region_results,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        os.unlink(tmp_path)
+        

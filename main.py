@@ -1,22 +1,20 @@
-from PIL import Image
-from ocr.ocr_engine import run_ocr          # your Day 3 module
-from layout.layout_detector import load_model, run_layout_detection
-import json
+# main.py
 
-# Load model once at startup (slow first time — downloads ~500MB)
-processor, model = load_model()
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.api.routes import router
 
-def process_page(image_path: str) -> list[dict]:
-    image = Image.open(image_path).convert("RGB")
+app = FastAPI(title="DocToMarkup API", version="1.0.0")
 
-    # OCR output from Day 3: list of {text, bbox}
-    ocr_results = run_ocr(image_path)
-    words = [r["text"] for r in ocr_results]
-    bboxes = [r["bbox"] for r in ocr_results]  # [[x1,y1,x2,y2], ...]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    layout = run_layout_detection(image, words, bboxes, processor, model)
-    return layout
+app.include_router(router)
 
-if __name__ == "__main__":
-    result = process_page("sample_docs/test_page.png")
-    print(json.dumps(result, indent=2))
+@app.get("/health")
+def health():
+    return {"status": "ok"}

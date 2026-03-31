@@ -5,31 +5,36 @@ from PIL import Image
 import numpy as np
 
 
-# Step 3 — PDF Loader
 def load_pdf(filepath: str) -> list:
+    """Load PDF pages as PIL Images."""
     doc = fitz.open(filepath)
     pages = []
     for page in doc:
         pix = page.get_pixmap(dpi=150)
-        pages.append(pix)
+        # Convert pixmap → PIL Image
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        pages.append(img)
     return pages
 
 
-# Step 4 — Image Loader
 def load_image(filepath: str) -> Image.Image:
+    """Load a single image file as PIL Image."""
     return Image.open(filepath).convert("RGB")
 
 
-# Step 5 — Normalize to Tensor
 def to_tensor(image: Image.Image) -> np.ndarray:
+    """Normalize PIL Image to numpy array."""
     return np.array(image.resize((1024, 1024))) / 255.0
 
 
-# Step 6 — Unified Loader
 def load_document(filepath: str) -> list:
-    if filepath.endswith(".pdf"):
-        pages = load_pdf(filepath)
-        # convert pixmaps to PIL then tensor
+    """
+    Unified loader — returns a list of PIL Images, one per page.
+    Works for both PDF and image files.
+    """
+    if filepath.lower().endswith(".pdf"):
+        return load_pdf(filepath)        # ← was missing return
     else:
         img = load_image(filepath)
-        return [to_tensor(img)]
+        return [img]                     # ← return PIL Image, not tensor
+    

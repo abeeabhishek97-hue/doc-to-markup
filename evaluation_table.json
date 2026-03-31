@@ -1,0 +1,28 @@
+{
+  "total_files": 2,
+  "avg_token_accuracy": 1.0,
+  "avg_structure_f1": 1.0,
+  "avg_tree_edit_distance": 0.0,
+  "per_file_results": [
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "ast_sci_data_tables_sample.pdf"
+    },
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "table.pdf"
+    }
+  ]
+}

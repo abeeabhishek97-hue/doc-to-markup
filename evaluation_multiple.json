@@ -1,0 +1,48 @@
+{
+  "total_files": 4,
+  "avg_token_accuracy": 1.0,
+  "avg_structure_f1": 1.0,
+  "avg_tree_edit_distance": 0.0,
+  "per_file_results": [
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "multicol_02_newspaper_newsletter.pdf"
+    },
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "multicol_03_magazine_feature.pdf"
+    },
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "multicol_04_conference_proceedings.pdf"
+    },
+    {
+      "token_accuracy": 1.0,
+      "structure_f1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "tree_edit_distance": 0.0,
+      "file": "multicol_05_mixed_layout_report.pdf"
+    }
+  ]
+}

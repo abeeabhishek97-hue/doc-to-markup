@@ -1,0 +1,58 @@
+{
+  "total_files": 5,
+  "avg_token_accuracy": 0.0,
+  "avg_structure_f1": 0.0,
+  "avg_tree_edit_distance": 0.9992,
+  "per_file_results": [
+    {
+      "token_accuracy": 0.0,
+      "structure_f1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "tree_edit_distance": 0.9991,
+      "file": "article_01_climate_change.pdf"
+    },
+    {
+      "token_accuracy": 0.0,
+      "structure_f1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "tree_edit_distance": 0.9991,
+      "file": "article_02_ai_healthcare.pdf"
+    },
+    {
+      "token_accuracy": 0.0,
+      "structure_f1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "tree_edit_distance": 0.9992,
+      "file": "article_03_remote_work_economy.pdf"
+    },
+    {
+      "token_accuracy": 0.0,
+      "structure_f1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "tree_edit_distance": 0.9991,
+      "file": "article_04_sleep_memory.pdf"
+    },
+    {
+      "token_accuracy": 0.0,
+      "structure_f1": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "tree_edit_distance": 0.9993,
+      "file": "article_05_quantum_computing.pdf"
+    }
+  ]
+}
