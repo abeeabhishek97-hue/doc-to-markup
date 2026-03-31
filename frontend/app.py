@@ -1,9 +1,25 @@
+# frontend/app.py
+
 import streamlit as st
-import requests
 import base64
+import sys
+import os
 
-API_URL = "http://localhost:9000/convert"
+# ── Add project root to path ──────────────────────────────────────────────────
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import tempfile
+import fitz
+import numpy as np
+from PIL import Image
+
+from src.ocr.ocr_engine import extract_text_boxes
+from src.layout.layout_detector import run_layout_detection
+from src.generation.markdown_generator import generate_markdown
+from src.generation.postprocessor import postprocess
+from src.generation.validator import validate_markdown
+
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Document to Markdown Converter",
     page_icon="📄",
@@ -14,7 +30,78 @@ st.title("📄 Document to Markdown Converter")
 st.caption("Upload a PDF or image to convert it to clean Markdown.")
 st.divider()
 
-# ── Upload ──────────────────────────────────────────────
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+
+def load_pages(file_bytes: bytes, file_type: str) -> list:
+    """Convert uploaded file to list of PIL Images."""
+    if file_type == "application/pdf":
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        pages = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=150)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            pages.append(img)
+        return pages
+    else:
+        from io import BytesIO
+        img = Image.open(BytesIO(file_bytes)).convert("RGB")
+        return [img]
+
+
+def run_pipeline(file_bytes: bytes, file_type: str) -> dict:
+    """
+    Run the full conversion pipeline.
+    Returns dict with markdown, confidence, regions.
+    """
+    pages      = load_pages(file_bytes, file_type)
+    all_regions = []
+
+    for page_image in pages:
+        # OCR
+        ocr_results = extract_text_boxes(page_image)
+        if not ocr_results:
+            continue
+
+        words  = [r["text"] for r in ocr_results]
+        bboxes = [r["bbox"]  for r in ocr_results]
+
+        # Layout detection
+        regions = run_layout_detection(
+            page_image,
+            words,
+            bboxes,
+            ocr_results=ocr_results
+        )
+
+        # Attach confidence
+        for i, region in enumerate(regions):
+            region["confidence"] = float(
+                ocr_results[i]["confidence"]
+            ) if i < len(ocr_results) else 0.9
+
+        all_regions.extend(regions)
+
+    # Generate Markdown
+    raw_markdown   = generate_markdown(all_regions)
+    clean_markdown = postprocess(raw_markdown)
+    is_valid, msg  = validate_markdown(clean_markdown)
+
+    avg_confidence = round(
+        sum(r.get("confidence", 0.9) for r in all_regions) / len(all_regions), 2
+    ) if all_regions else 0.0
+
+    return {
+        "markdown":   clean_markdown,
+        "confidence": avg_confidence,
+        "regions":    all_regions,
+        "valid":      is_valid,
+        "pages":      len(pages),
+    }
+
+
+# ── Upload ────────────────────────────────────────────────────────────────────
+
 uploaded_file = st.file_uploader(
     "Drag & drop or click to upload",
     type=["pdf", "png", "jpg", "jpeg"]
@@ -34,8 +121,8 @@ if uploaded_file:
                 f'<object data="data:application/pdf;base64,{b64}" '
                 f'type="application/pdf" width="100%" height="600px">'
                 f'<p>PDF cannot be displayed. '
-                f'<a href="data:application/pdf;base64,{b64}" download="{uploaded_file.name}">'
-                f'Download instead</a></p>'
+                f'<a href="data:application/pdf;base64,{b64}" '
+                f'download="{uploaded_file.name}">Download instead</a></p>'
                 f'</object>',
                 unsafe_allow_html=True
             )
@@ -43,79 +130,58 @@ if uploaded_file:
             st.image(uploaded_file, use_container_width=True)
 
     st.divider()
-    convert_clicked = st.button("⚡ Convert to Markdown", type="primary", use_container_width=True)
+    convert_clicked = st.button(
+        "⚡ Convert to Markdown",
+        type="primary",
+        use_container_width=True
+    )
 
     with col2:
         st.subheader("📝 Markdown Output")
 
         if convert_clicked:
-            with st.spinner("Converting... this may take up to 2 minutes on first run."):
+            with st.spinner("Converting... please wait."):
                 try:
                     uploaded_file.seek(0)
-                    files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                    response = requests.post(API_URL, files=files, timeout=120)
-                    response.raise_for_status()
+                    file_bytes = uploaded_file.read()
+                    result     = run_pipeline(file_bytes, uploaded_file.type)
 
-                    # ── Save response data ─────────────────────────────
-                    data          = response.json()
-                    markdown_text = data["markdown"]
-                    st.session_state["regions"]    = data.get("regions", [])
-                    st.session_state["confidence"] = data.get("confidence", 0.0)
-
-                except requests.exceptions.ConnectionError:
-                    markdown_text = """# Sample Heading
-
-This is **dummy output** — backend not reachable.
-
-## Section 2
-
-- Item one
-- Item two
-- Item three
-
-| Column A | Column B |
-|----------|----------|
-| Value 1  | Value 2  |
-"""
-                    st.warning("⚠️ Backend not reachable — showing dummy output.")
-
-                except requests.exceptions.HTTPError as e:
-                    st.error(f"Backend error: {e}")
-                    markdown_text = None
+                    st.session_state["markdown"]   = result["markdown"]
+                    st.session_state["confidence"] = result["confidence"]
+                    st.session_state["regions"]    = result["regions"]
+                    st.session_state["pages"]      = result["pages"]
 
                 except Exception as e:
-                    st.error(f"Unexpected error: {e}")
-                    markdown_text = None
-
-            if markdown_text:
-                st.session_state["markdown"] = markdown_text
+                    st.error(f"Error: {e}")
+                    st.session_state.pop("markdown", None)
 
         if "markdown" in st.session_state:
-            md = st.session_state["markdown"]
+            md       = st.session_state["markdown"]
+            conf     = st.session_state.get("confidence", 0.0)
+            regions  = st.session_state.get("regions", [])
+            pages    = st.session_state.get("pages", 1)
 
-            # ── Confidence highlighting ────────────────────────────────
-            if "confidence" in st.session_state:
-                avg_conf = st.session_state.get("confidence", 0.0)
-                regions  = st.session_state.get("regions", [])
+            # ── Metrics ───────────────────────────────────────────────
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Avg Confidence", f"{conf:.0%}")
+            m2.metric("Pages",          pages)
+            m3.metric("Regions",        len(regions))
 
-                # Show confidence metric
-                col2.metric("Avg Confidence", f"{avg_conf:.0%}")
+            # ── Low confidence warning ─────────────────────────────
+            low_conf = [r for r in regions if float(r.get("confidence", 1.0)) < 0.6]
+            if low_conf:
+                st.warning(
+                    f"⚠️ {len(low_conf)} regions have low confidence "
+                    f"(< 60%) — review these sections carefully."
+                )
 
-                # Warn about low confidence regions
-                low_conf = [
-                    r for r in regions
-                    if float(r.get("confidence", 1.0)) < 0.6
-                ]
-                if low_conf:
-                    st.warning(
-                        f"⚠️ {len(low_conf)} regions have low confidence "
-                        f"(< 60%) — review these sections carefully."
-                    )
-
+            # ── Markdown output ────────────────────────────────────
             st.markdown(md)
             st.divider()
+
             with st.expander("🔍 View raw Markdown"):
                 st.code(md, language="markdown")
+
             st.download_button(
                 label="⬇ Download .md file",
                 data=md,
@@ -123,5 +189,6 @@ This is **dummy output** — backend not reachable.
                 mime="text/markdown",
                 use_container_width=True
             )
+
         else:
             st.info("Click **Convert** to generate Markdown output.")

@@ -16,7 +16,7 @@ from src.generation.validator import validate_markdown
 
 router = APIRouter()
 
-# Load layout model once at startup — not on every request
+# Load layout model once at startup
 _processor, _model = load_model()
 
 
@@ -51,7 +51,7 @@ async def convert_document(file: UploadFile = File(...)):
         # ── Step 2: OCR + Layout per page ─────────────────────────────
         for page_image in pages:
 
-            # OCR — returns list of {text, bbox, confidence}
+            # OCR — returns list of {text, bbox, confidence, block_num, line_num}
             ocr_results = await asyncio.to_thread(
                 extract_text_boxes, page_image
             )
@@ -59,25 +59,26 @@ async def convert_document(file: UploadFile = File(...)):
             if not ocr_results:
                 continue
 
-            # Extract words and bboxes for layout model
+            # Extract words and bboxes
             words  = [r["text"] for r in ocr_results]
-            bboxes = [r["bbox"] for r in ocr_results]
+            bboxes = [r["bbox"]  for r in ocr_results]
 
-            # Layout detection
+            # Layout detection — pass full ocr_results for line grouping
             regions = await asyncio.to_thread(
                 run_layout_detection,
-                page_image,    # PIL image
+                page_image,
                 words,
                 bboxes,
                 _processor,
-                _model
+                _model,
+                ocr_results       # ← pass for Tesseract line metadata
             )
 
             # Attach confidence from OCR to each region
             for i, region in enumerate(regions):
                 region["confidence"] = float(
                     ocr_results[i]["confidence"]
-                ) if i < len(ocr_results) else 0.0
+                ) if i < len(ocr_results) else 0.9
 
             all_regions.extend(regions)
 
@@ -115,4 +116,3 @@ async def convert_document(file: UploadFile = File(...)):
 
     finally:
         os.unlink(tmp_path)
-        
