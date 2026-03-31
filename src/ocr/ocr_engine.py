@@ -1,10 +1,39 @@
 # src/ocr/ocr_engine.py
 
+import os
+import shutil
+
 import pytesseract
 import numpy as np
 from PIL import Image
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+def _configure_tesseract() -> str:
+    """
+    Resolve the Tesseract executable from:
+    1. `TESSERACT_CMD` env var
+    2. system PATH
+    3. common Windows install location
+    """
+    candidates = [
+        os.environ.get("TESSERACT_CMD"),
+        shutil.which("tesseract"),
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    ]
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            pytesseract.pytesseract.tesseract_cmd = candidate
+            return candidate
+
+    raise RuntimeError(
+        "Tesseract OCR is not installed or not configured. "
+        "Install Tesseract and either add `tesseract` to PATH or set the "
+        "`TESSERACT_CMD` environment variable to the full executable path."
+    )
+
+
+_configure_tesseract()
 
 
 def extract_text_boxes(image) -> list[dict]:
